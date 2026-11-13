@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Goals &amp; Side Quests</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0e17">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0f0e17; --panel: #1a1b26; --panel2: #24253a; --border: #3d3f5c;
+    --text: #e6edf3; --dim: #9aa0b5; --accent: #58d68d; --accent2: #f7c948;
+    --danger: #f47067; --ink: #16161e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'VT323', 'Courier New', monospace; font-size: 20px; line-height: 1.25;
+    padding: 16px; max-width: 640px; margin: 0 auto;
+  }
+  /* faint CRT scanlines */
+  body::after {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.10) 0 1px, transparent 1px 3px);
+    opacity: .35;
+  }
+  h1 {
+    font-family: 'Press Start 2P', monospace; font-size: 15px; letter-spacing: 1px;
+    color: var(--accent2); text-shadow: 3px 3px 0 var(--ink); margin-bottom: 6px;
+  }
+  h1 .sub { color: var(--dim); font-family: 'VT323', monospace; font-size: 17px; text-shadow: none; display: block; margin-top: 6px; }
+  .panel {
+    background: var(--panel); border: 4px solid var(--border);
+    box-shadow: 0 5px 0 var(--ink), inset 0 0 0 2px rgba(0,0,0,.25);
+    padding: 14px; margin: 14px 0;
+  }
+  .ptitle { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--accent); margin-bottom: 8px; }
+
+  /* HUD */
+  #hud { display: flex; align-items: center; gap: 14px; }
+  #heroCanvas { width: 96px; height: 96px; image-rendering: pixelated; background: var(--panel2); border: 4px solid var(--border); box-shadow: 0 4px 0 var(--ink); flex-shrink: 0; }
+  #xpwrap { flex: 1; min-width: 0; }
+  #levelBadge {
+    display: inline-block; font-family: 'Press Start 2P', monospace; font-size: 11px;
+    background: var(--accent2); color: var(--ink); padding: 6px 10px;
+    border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink); margin-bottom: 8px;
+  }
+  #xpbar {
+    background: var(--ink); border: 3px solid var(--border); height: 18px; overflow: hidden;
+  }
+  #xpfill {
+    background: repeating-linear-gradient(90deg, var(--accent) 0 10%, transparent 10% 11.5%);
+    background-color: transparent; height: 100%; width: 0%;
+    border-right: 3px solid var(--accent);
+    transition: width .4s;
+  }
+  #xpfill.seg { background: var(--accent); }
+  #xptext { color: var(--dim); font-size: 17px; margin-top: 5px; }
+  #streak { color: var(--accent2); font-size: 18px; margin-top: 2px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  .tab {
+    font-family: 'Press Start 2P', monospace; font-size: 8px; letter-spacing: .5px;
+    background: var(--panel); border: 3px solid var(--border); color: var(--dim);
+    padding: 9px 10px 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ink);
+  }
+  .tab:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .tab.active { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+
+  /* quest rows */
+  .quest { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 3px solid var(--border); flex-wrap: wrap; }
+  .quest:last-child { border-bottom: none; }
+  .quest .name { flex: 1 1 40%; font-size: 21px; }
+  .quest .xp { color: var(--accent2); font-size: 17px; white-space: nowrap; }
+  .quest.done .name { color: var(--dim); text-decoration: line-through; }
+
+  button {
+    cursor: pointer; background: var(--panel2); color: var(--text);
+    border: 3px solid var(--border); box-shadow: 0 3px 0 var(--ink);
+    font-family: 'VT323', monospace; font-size: 18px; padding: 7px 12px;
+  }
+  button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  button.done-btn {
+    background: var(--accent); color: var(--ink); border-color: var(--ink);
+    font-family: 'Press Start 2P', monospace; font-size: 9px; padding: 9px 10px 7px;
+  }
+  button.small { padding: 5px 9px; font-size: 16px; }
+  button.danger { color: var(--danger); }
+
+  input, select {
+    background: var(--ink); border: 3px solid var(--border); color: var(--text);
+    padding: 9px 10px; font-family: 'VT323', monospace; font-size: 19px; width: 100%;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  input[type="datetime-local"] { color-scheme: dark; }
+  .addrow { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .addrow input[type="text"], .addrow input:not([type]) { flex: 2; }
+  .addrow select { flex: 1; width: auto; }
+  .duelabel { color: var(--dim); font-size: 17px; white-space: nowrap; }
+  .due-editor { display: flex; gap: 8px; padding: 8px 0 8px 12px; align-items: center; border-bottom: 3px solid var(--border); background: var(--panel2); }
+  .due-editor input { flex: 1; }
+
+  .muted { color: var(--dim); font-size: 17px; margin-top: 6px; line-height: 1.4; }
+  .tiny { font-size: 16px; }
+
+  .badge {
+    font-size: 15px; padding: 3px 8px; border: 2px solid var(--border);
+    color: var(--dim); white-space: nowrap;
+  }
+  .badge.pending { color: var(--accent2); border-color: var(--accent2); }
+  .badge.reviewed { color: var(--accent); border-color: var(--accent); }
+  .badge.due { color: var(--accent); border-color: var(--accent); }
+  .badge.overdue { color: #fff; background: var(--danger); border-color: var(--danger); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .55; } }
+
+  /* rewards */
+  .reward { border: 3px solid var(--border); background: var(--panel2); padding: 10px; margin: 10px 0; box-shadow: 0 3px 0 var(--ink); }
+  .reward.locked { opacity: .55; filter: grayscale(.7); }
+  .rhead { display: flex; align-items: center; gap: 10px; }
+  .rlv { font-family: 'Press Start 2P', monospace; font-size: 9px; background: var(--accent2); color: var(--ink); padding: 4px 7px; border: 2px solid var(--ink); }
+  .reward.locked .rlv { background: var(--dim); }
+  .rname { flex: 1; font-size: 21px; color: var(--accent); }
+  .reward.locked .rname { color: var(--dim); }
+  .rstatus { font-size: 15px; color: var(--accent2); }
+  .rdesc { margin-top: 4px; }
+
+  .photo-thumb { max-width: 90px; max-height: 90px; border: 3px solid var(--border); image-rendering: auto; }
+  .upload-row { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 3px solid var(--border); }
+  .upload-row:last-child { border-bottom: none; }
+
+  /* login */
+  #loginPanel { max-width: 380px; margin: 60px auto; }
+  #loginPanel h1 { margin-bottom: 16px; }
+  #loginPanel input { margin-bottom: 12px; }
+  #loginPanel button { width: 100%; }
+  #error { color: var(--danger); font-size: 18px; margin-top: 8px; min-height: 20px; }
+
+  /* celebrations */
+  #celebrate { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.78); z-index: 60; text-align: center; padding-top: 30vh; }
+  #celebrate .box {
+    display: inline-block; background: var(--panel); border: 4px solid var(--accent);
+    box-shadow: 0 6px 0 var(--ink); padding: 26px 36px; font-family: 'Press Start 2P', monospace; font-size: 13px;
+  }
+  #celebrate .box .big { font-size: 44px; display: block; margin-bottom: 14px; }
+  #levelup { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 70; text-align: center; padding-top: 12vh; }
+  #levelup .box { display: inline-block; background: var(--panel); border: 4px solid var(--accent2); box-shadow: 0 6px 0 var(--ink); padding: 24px 32px; max-width: 86vw; }
+  #levelupCanvas { width: 128px; height: 128px; image-rendering: pixelated; margin-bottom: 10px; }
+  .lutext { font-family: 'Press Start 2P', monospace; font-size: 14px; color: var(--accent2); text-shadow: 2px 2px 0 var(--ink); margin-bottom: 10px; }
+  .lureward { font-size: 20px; color: var(--accent); margin-bottom: 16px; }
+
+  .hidden { display: none !important; }
+  #signout { float: right; }
+  #notifPanel button { margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div id="loginPanel" class="panel hidden">
+  <h1>Goals &amp; Side Quests</h1>
+  <input id="email" type="email" placeholder="Email" autocomplete="username">
+  <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+  <button id="loginBtn">Sign in</button>
+  <div id="error"></div>
+</div>
+
+<div id="app" class="hidden">
+  <button id="signout" class="small">Sign out</button>
+  <h1>Goals &amp; Side Quests <span class="sub">homework, reminders, goals and side quests</span></h1>
+
+  <div class="panel" id="hud">
+    <canvas id="heroCanvas" width="200" height="200"></canvas>
+    <div id="xpwrap">
+      <div id="levelBadge">LV 1</div>
+      <div id="xpbar"><div id="xpfill" class="seg"></div></div>
+      <div id="xptext">0 / 100 XP</div>
+      <div id="streak"></div>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="panel" id="listPanel">
+    <div id="questList"></div>
+    <div class="addrow">
+      <input id="newTitle" type="text" placeholder="Add a task...">
+      <select id="newCat">
+        <option value="homework">Homework</option>
+        <option value="reminder">Reminder</option>
+        <option value="goal">Goal</option>
+        <option value="sidequest">Side Quest</option>
+      </select>
+      <button id="addBtn">Add</button>
+    </div>
+    <div class="addrow">
+      <span class="duelabel">Due (optional):</span>
+      <input id="newDue" type="datetime-local">
+    </div>
+    <div class="muted" id="sidequestNote" style="display:none">
+      Start a side quest before you head out, then tell Instinct in chat so your location can be checked. Location checks come from your phone's location history and can miss updates.
+      Photos you upload here are stored privately and marked for Instinct to review; analysis isn't automatic on the page.
+    </div>
+  </div>
+
+  <div class="panel hidden" id="rewardsPanel">
+    <div class="ptitle">LEVEL REWARDS</div>
+    <div id="rewardsList"></div>
+  </div>
+
+  <div class="panel hidden" id="photosPanel">
+    <div class="addrow">
+      <input id="photoFile" type="file" accept="image/*">
+      <select id="photoKind">
+        <option value="quest">Quest proof</option>
+        <option value="homework">Homework</option>
+      </select>
+      <button id="uploadBtn">Upload</button>
+    </div>
+    <div class="muted">Uploads are private to this app's accounts. Each one is flagged for Instinct review - tell Instinct in chat when you upload so it gets looked at.</div>
+    <div id="uploadList" style="margin-top:10px"></div>
+  </div>
+
+  <div class="panel hidden" id="completedPanel">
+    <div id="completedList"></div>
+  </div>
+
+  <div class="panel" id="notifPanel">
+    <div class="ptitle">NOTIFICATIONS</div>
+    <div id="notifStatus" class="muted">Checking...</div>
+    <button id="notifBtn">Enable notifications</button>
+    <div class="muted tiny">Get an alert when a task hits its due time. On iPhone: open the app from your Home Screen icon first, then enable.</div>
+  </div>
+</div>
+
+<div id="celebrate"><div class="box"><span class="big">&#127881;</span><span id="celebrateText">Quest complete!</span></div></div>
+
+<div id="levelup"><div class="box">
+  <canvas id="levelupCanvas" width="200" height="200"></canvas>
+  <div id="levelupText" class="lutext">LEVEL UP!</div>
+  <div id="levelupReward" class="lureward"></div>
+  <button id="levelupClose">Keep questing</button>
+</div></div>
+
+<script src="config.js"></script>
+<script>
+'use strict';
+
+/* ---- config (from config.js, loaded first) ---- */
+const SUPABASE_URL = window.__SUPABASE_URL__;
+const SUPABASE_KEY = window.__SUPABASE_KEY__;
+const VAPID_PUBLIC_KEY = window.__VAPID_PUBLIC_KEY__;
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+});
+
+const XP_BY_CAT = { reminder: 10, homework: 25, goal: 25, sidequest: 50 };
+const CATS = [
+  { id: 'homework', label: 'Homework' },
+  { id: 'reminder', label: 'Reminders' },
+  { id: 'goal', label: 'Goals' },
+  { id: 'sidequest', label: 'Side Quests' },
+  { id: 'rewards', label: 'Rewards' },
+  { id: 'photos', label: 'Photos' },
+  { id: 'completed', label: 'Completed' }
+];
+let currentTab = 'homework';
+let quests = [];
+
+const $ = id => document.getElementById(id);
+const err = m => { $('error').textContent = m || ''; };
+
+/* ================= pixel character ================= */
+const PAL = {
+  k: '#16161e', s: '#f0c297', h: '#6b4a2b', t: '#3aa655', b: '#8b5a2b',
+  c: '#d64545', w: '#c9d1d9', g: '#f7c948', p: '#4a6fa5', f: '#e6edf3'
+};
+const SPRITE_W = 20, SPRITE_H = 20;
+const BASE = [
+  "....................",
+  "....................",
+  "......kkkkkk........",
+  ".....khhhhhhk.......",
+  ".....khhhhhhk.......",
+  ".....kssssssk.......",
+  ".....kskssksk.......",
+  ".....kssssssk.......",
+  "......kssssk........",
+  "....kkttttttkk......",
+  "....ksttttttsk......",
+  "....kkttttttkk......",
+  ".....kttttttk.......",
+  ".....kttttttk.......",
+  ".....kttkkttk.......",
+  ".....kttkkttk.......",
+  ".....kkkkkkkk.......",
+  "....................",
+  "....................",
+  "...................."
+];
+function emptyGrid() { return Array.from({ length: SPRITE_H }, () => Array(SPRITE_W).fill('.')); }
+function buildBody(level) {
+  const g = BASE.map(r => r.split(''));
+  if (level >= 9) { // golden armor
+    for (let y = 0; y < SPRITE_H; y++) for (let x = 0; x < SPRITE_W; x++) if (g[y][x] === 't') g[y][x] = 'g';
+  }
+  if (level >= 2) { // boots
+    g[15] = ".....kbbkkbbk.......".split('');
+    g[16] = ".....kbbkkbbk.......".split('');
+  }
+  if (level >= 6) { // helm + plume
+    g[3] = ".....kwwwwwwk.......".split('');
+    g[4] = ".....kwwwwwwk.......".split('');
+    g[1][8] = 'c'; g[1][9] = 'c'; g[2][8] = 'c'; g[2][9] = 'c';
+  }
+  if (level >= 7) { // crown
+    g[1][6] = 'g'; g[1][8] = 'g'; g[1][10] = 'g';
+  }
+  return g;
+}
+function drawLayerCape(g) { for (let y = 9; y <= 14; y++) { g[y][3] = 'c'; g[y][16] = 'c'; } g[15][3] = 'k'; g[15][16] = 'k'; }
+function drawLayerWings(g) {
+  [[6, 2], [7, 3], [8, 3], [9, 2], [10, 1]].forEach(pair => {
+    const y = pair[0], w = pair[1];
+    for (let x = 0; x < w; x++) { g[y][x] = 'f'; g[y][SPRITE_W - 1 - x] = 'f'; }
+  });
+}
+function drawLayerSword(g) {
+  g[4][14] = 'w';
+  for (let y = 5; y <= 9; y++) g[y][14] = 'w';
+  g[10][13] = 'g'; g[10][14] = 'g'; g[10][15] = 'g';
+  g[11][14] = 'b'; g[12][14] = 'b';
+  g[13][14] = 'g';
+}
+function drawLayerShield(g) {
+  const rows = [
+    [10, [[2, 'k'], [3, 'p'], [4, 'p'], [5, 'k']]],
+    [11, [[1, 'k'], [2, 'p'], [3, 'g'], [4, 'p'], [5, 'k']]],
+    [12, [[1, 'k'], [2, 'p'], [3, 'p'], [4, 'p'], [5, 'k']]],
+    [13, [[2, 'k'], [3, 'p'], [4, 'k']]],
+    [14, [[3, 'k']]]
+  ];
+  rows.forEach(pair => { const y = pair[0]; pair[1].forEach(cell => { g[y][cell[0]] = cell[1]; }); });
+}
+function sparklesFor(frame) {
+  return frame
+    ? [[2, 5], [17, 5], [1, 12], [18, 12], [10, 0], [9, 19]]
+    : [[1, 2], [18, 2], [0, 16], [19, 7], [4, 0], [15, 18]];
+}
+function renderCharacter(canvas, level, frame) {
+  const scale = canvas.width / SPRITE_W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const off = frame ? -1 : 0;
+  function paint(grid) {
+    for (let y = 0; y < SPRITE_H; y++) for (let x = 0; x < SPRITE_W; x++) {
+      const c = grid[y][x];
+      if (c !== '.') { ctx.fillStyle = PAL[c]; ctx.fillRect(x * scale, (y + off) * scale, scale, scale); }
+    }
+  }
+  const wings = emptyGrid(), cape = emptyGrid(), sword = emptyGrid(), shield = emptyGrid();
+  if (level >= 8) drawLayerWings(wings);
+  if (level >= 3) drawLayerCape(cape);
+  if (level >= 4) drawLayerSword(sword);
+  if (level >= 5) drawLayerShield(shield);
+  paint(wings); paint(cape); paint(buildBody(level)); paint(sword); paint(shield);
+  if (level >= 10) {
+    sparklesFor(frame).forEach(pt => {
+      const x = pt[0], y = pt[1];
+      ctx.fillStyle = PAL.g; ctx.fillRect(x * scale, y * scale, scale, scale);
+      ctx.fillStyle = PAL.f;
+      ctx.fillRect((x - 1) * scale, y * scale, scale, scale);
+      ctx.fillRect((x + 1) * scale, y * scale, scale, scale);
+      ctx.fillRect(x * scale, (y - 1) * scale, scale, scale);
+      ctx.fillRect(x * scale, (y + 1) * scale, scale, scale);
+    });
+  }
+}
+
+/* ================= rewards ================= */
+const REWARDS = [
+  { level: 2, name: "Wanderer's Boots", desc: "For taking the first steps." },
+  { level: 3, name: "Cape of Focus", desc: "Flows behind you when quests get done." },
+  { level: 4, name: "Training Sword", desc: "Cuts through homework." },
+  { level: 5, name: "Guardian Shield", desc: "Blocks distraction damage." },
+  { level: 6, name: "Brave Helm", desc: "For facing the hard stuff head-on." },
+  { level: 7, name: "Crown of Discipline", desc: "Rule your own quest log." },
+  { level: 8, name: "Sky Wings", desc: "Soar past your goals." },
+  { level: 9, name: "Golden Armor", desc: "Shiny. Earned." },
+  { level: 10, name: "Star Aura", desc: "You glow now. Literally." }
+];
+function rewardFor(level) {
+  return REWARDS.find(r => r.level === level) || { level, name: 'Prestige Gem', desc: 'Proof you keep going past legend.' };
+}
+
+let heroLevel = 1;
+let animFrame = 0;
+setInterval(() => {
+  animFrame = animFrame ? 0 : 1;
+  const c = $('heroCanvas');
+  if (c && !$('app').classList.contains('hidden')) renderCharacter(c, heroLevel, animFrame);
+}, 650);
+
+/* ================= auth + init ================= */
+async function init() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) { $('loginPanel').classList.remove('hidden'); err('App not configured yet.'); return; }
+  registerSW();
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) showApp(); else $('loginPanel').classList.remove('hidden');
+  sb.auth.onAuthStateChange((_e, s) => { if (s) showApp(); });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) sb.auth.getSession(); });
+
+$('loginBtn').onclick = async () => {
+  err('');
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
+  if (error) err(error.message);
+};
+$('signout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+function showApp() {
+  $('loginPanel').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  renderTabs();
+  loadQuests();
+  loadUploads();
+  refreshNotifUI();
+}
+
+/* ================= tabs ================= */
+function renderTabs() {
+  $('tabs').innerHTML = '';
+  CATS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (c.id === currentTab ? ' active' : '');
+    b.textContent = c.label;
+    b.onclick = () => { currentTab = c.id; renderTabs(); renderMain(); };
+    $('tabs').appendChild(b);
+  });
+}
+
+function renderMain() {
+  const isPhotos = currentTab === 'photos', isCompleted = currentTab === 'completed', isRewards = currentTab === 'rewards';
+  $('listPanel').classList.toggle('hidden', isPhotos || isCompleted || isRewards);
+  $('photosPanel').classList.toggle('hidden', !isPhotos);
+  $('completedPanel').classList.toggle('hidden', !isCompleted);
+  $('rewardsPanel').classList.toggle('hidden', !isRewards);
+  $('sidequestNote').style.display = currentTab === 'sidequest' ? 'block' : 'none';
+  $('newCat').value = CATS.some(c => c.id === currentTab && ['homework', 'reminder', 'goal', 'sidequest'].includes(currentTab)) ? currentTab : 'homework';
+  if (!isPhotos && !isCompleted && !isRewards) renderQuests();
+  if (isCompleted) renderCompleted();
+  if (isRewards) renderRewards();
+  if (isPhotos) loadUploads();
+}
+
+/* ================= quests ================= */
+async function loadQuests() {
+  const { data, error } = await sb.from('quests').select('*').order('created_at', { ascending: true });
+  if (error) { console.error(error); return; }
+  quests = data || [];
+  renderQuests();
+  renderHUD();
+  checkLevelUp();
+}
+function openQuests(cat) { return quests.filter(q => q.category === cat && q.status === 'open'); }
+
+function fmtDue(d) {
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' }) + ' ' +
+         d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function toLocalInput(d) {
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function renderQuests() {
+  const list = openQuests(currentTab);
+  const el = $('questList');
+  el.innerHTML = list.length ? '' : '<div class="muted">Nothing here yet.</div>';
+  list.forEach(q => {
+    const row = document.createElement('div');
+    row.className = 'quest';
+    const started = q.started_at ? ' <span class="badge">started ' + new Date(q.started_at).toLocaleDateString() + '</span>' : '';
+    row.innerHTML = '<span class="name"></span> <span class="xp">+' + q.xp + ' XP</span>' + started;
+    row.querySelector('.name').textContent = q.title;
+
+    if (q.due_at) {
+      const d = new Date(q.due_at);
+      const overdue = d.getTime() < Date.now();
+      const b = document.createElement('span');
+      b.className = 'badge ' + (overdue ? 'overdue' : 'due');
+      b.textContent = (overdue ? 'OVERDUE ' : '') + fmtDue(d);
+      row.appendChild(b);
+    }
+    const dueBtn = document.createElement('button');
+    dueBtn.className = 'small';
+    dueBtn.title = 'Set due time';
+    dueBtn.textContent = q.due_at ? 'edit time' : '+ time';
+    dueBtn.onclick = () => toggleDueEditor(row, q);
+    row.appendChild(dueBtn);
+
+    if (q.category === 'sidequest' && !q.started_at) {
+      const s = document.createElement('button');
+      s.className = 'small'; s.textContent = 'Start';
+      s.onclick = async () => { await sb.from('quests').update({ started_at: new Date().toISOString() }).eq('id', q.id); loadQuests(); };
+      row.appendChild(s);
+    }
+    const d = document.createElement('button');
+    d.className = 'done-btn'; d.textContent = 'Done';
+    d.onclick = () => completeQuest(q);
+    row.appendChild(d);
+    const del = document.createElement('button');
+    del.className = 'small danger'; del.textContent = 'x';
+    del.onclick = async () => { if (confirm('Delete "' + q.title + '"?')) { await sb.from('quests').delete().eq('id', q.id); loadQuests(); } };
+    row.appendChild(del);
+    el.appendChild(row);
+  });
+}
+
+function toggleDueEditor(row, q) {
+  const next = row.nextSibling;
+  if (next && next.classList && next.classList.contains('due-editor')) { next.remove(); return; }
+  const ed = document.createElement('div');
+  ed.className = 'due-editor';
+  const inp = document.createElement('input');
+  inp.type = 'datetime-local';
+  inp.value = q.due_at ? toLocalInput(new Date(q.due_at)) : toLocalInput(new Date(Date.now() + 3600000));
+  const save = document.createElement('button');
+  save.className = 'small'; save.textContent = 'Save';
+  save.onclick = async () => {
+    const v = inp.value;
+    await sb.from('quests').update({ due_at: v ? new Date(v).toISOString() : null, reminder_sent_at: null }).eq('id', q.id);
+    loadQuests();
+  };
+  const clear = document.createElement('button');
+  clear.className = 'small'; clear.textContent = 'Clear';
+  clear.onclick = async () => {
+    await sb.from('quests').update({ due_at: null, reminder_sent_at: null }).eq('id', q.id);
+    loadQuests();
+  };
+  ed.appendChild(inp); ed.appendChild(save); ed.appendChild(clear);
+  row.parentNode.insertBefore(ed, row.nextSibling);
+}
+
+$('addBtn').onclick = async () => {
+  const title = $('newTitle').value.trim();
+  if (!title) return;
+  const cat = $('newCat').value;
+  const dueVal = $('newDue').value;
+  const { data: { user } } = await sb.auth.getUser();
+  await sb.from('quests').insert({
+    title, category: cat, xp: XP_BY_CAT[cat] || 10, created_by: user.id,
+    due_at: dueVal ? new Date(dueVal).toISOString() : null
+  });
+  $('newTitle').value = '';
+  $('newDue').value = '';
+  if (currentTab !== cat) { currentTab = cat; renderTabs(); }
+  loadQuests().then(renderMain);
+};
+
+async function completeQuest(q) {
+  await sb.from('quests').update({ status: 'done', completed_at: new Date().toISOString() }).eq('id', q.id);
+  celebrate('Quest complete! +' + q.xp + ' XP');
+  await loadQuests();
+  renderMain();
+}
+
+function celebrate(text) {
+  $('celebrateText').textContent = text;
+  $('celebrate').style.display = 'block';
+  setTimeout(() => { $('celebrate').style.display = 'none'; }, 1400);
+}
+
+/* ================= HUD / levels ================= */
+function currentXP() { return quests.filter(q => q.status === 'done').reduce((s, q) => s + (q.xp || 0), 0); }
+function levelFor(xp) { return Math.floor(xp / 100) + 1; }
+
+function renderHUD() {
+  const xp = currentXP();
+  const level = levelFor(xp);
+  const into = xp % 100;
+  $('levelBadge').textContent = 'LV ' + level;
+  $('xpfill').style.width = into + '%';
+  $('xptext').textContent = into + ' / 100 XP  (' + xp + ' total)';
+  const st = streakDays(quests.filter(q => q.status === 'done'));
+  $('streak').textContent = st > 0 ? st + ' day streak' : '';
+}
+
+function streakDays(done) {
+  const days = new Set(done.filter(q => q.completed_at).map(q => new Date(q.completed_at).toDateString()));
+  let streak = 0;
+  const d = new Date();
+  if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1);
+  while (days.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1); }
+  return streak;
+}
+
+function checkLevelUp() {
+  const level = levelFor(currentXP());
+  heroLevel = level;
+  const c = $('heroCanvas');
+  if (c) renderCharacter(c, heroLevel, animFrame);
+  const stored = localStorage.getItem('questLevel');
+  if (stored === null) { localStorage.setItem('questLevel', String(level)); return; }
+  const prev = parseInt(stored, 10) || 1;
+  if (level > prev) {
+    localStorage.setItem('questLevel', String(level));
+    showLevelUp(level);
+  }
+}
+
+function showLevelUp(level) {
+  const r = rewardFor(level);
+  $('levelupText').textContent = 'LEVEL UP! You reached LV ' + level;
+  $('levelupReward').textContent = 'New reward: ' + r.name;
+  $('levelup').style.display = 'block';
+  const c = $('levelupCanvas');
+  if (c) renderCharacter(c, level, 0);
+}
+$('levelupClose').onclick = () => { $('levelup').style.display = 'none'; };
+$('heroCanvas').style.cursor = 'pointer';
+$('heroCanvas').onclick = () => { currentTab = 'rewards'; renderTabs(); renderMain(); };
+
+function renderRewards() {
+  const el = $('rewardsList');
+  const xp = currentXP();
+  const level = levelFor(xp);
+  el.innerHTML = '<div class="muted" style="margin-bottom:10px">You are LV ' + level + '. Gear unlocks as you level up and shows up on your character.</div>';
+  REWARDS.forEach(r => {
+    const un = level >= r.level;
+    const card = document.createElement('div');
+    card.className = 'reward ' + (un ? 'unlocked' : 'locked');
+    card.innerHTML = '<div class="rhead"><span class="rlv">LV ' + r.level + '</span> <span class="rname"></span> <span class="rstatus">' + (un ? 'UNLOCKED' : 'LOCKED') + '</span></div><div class="rdesc muted"></div>';
+    card.querySelector('.rname').textContent = r.name;
+    card.querySelector('.rdesc').textContent = r.desc;
+    el.appendChild(card);
+  });
+  const p = document.createElement('div');
+  p.className = 'reward ' + (level >= 11 ? 'unlocked' : 'locked');
+  p.innerHTML = '<div class="rhead"><span class="rlv">LV 11+</span> <span class="rname">Prestige Gem</span> <span class="rstatus">' + (level >= 11 ? 'x' + (level - 10) : 'LOCKED') + '</span></div><div class="rdesc muted">One gem for every level past 10.</div>';
+  el.appendChild(p);
+}
+
+/* ================= completed ================= */
+function renderCompleted() {
+  const done = quests.filter(q => q.status === 'done').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+  const el = $('completedList');
+  el.innerHTML = done.length ? '' : '<div class="muted">No completed quests yet.</div>';
+  done.forEach(q => {
+    const row = document.createElement('div');
+    row.className = 'quest done';
+    row.innerHTML = '<span class="name"></span> <span class="xp">+' + q.xp + ' XP</span> <span class="badge">' + new Date(q.completed_at).toLocaleDateString() + '</span>';
+    row.querySelector('.name').textContent = q.title;
+    el.appendChild(row);
+  });
+}
+
+/* ================= photos ================= */
+$('uploadBtn').onclick = async () => {
+  const f = $('photoFile').files[0];
+  if (!f) return;
+  const { data: { user } } = await sb.auth.getUser();
+  const path = user.id + '/' + Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const { error: upErr } = await sb.storage.from('uploads').upload(path, f);
+  if (upErr) { alert('Upload failed: ' + upErr.message); return; }
+  await sb.from('uploads').insert({ storage_path: path, kind: $('photoKind').value, uploaded_by: user.id });
+  $('photoFile').value = '';
+  celebrate('Photo uploaded for review');
+  loadUploads();
+};
+
+async function loadUploads() {
+  if (currentTab !== 'photos') return;
+  const { data, error } = await sb.from('uploads').select('*').order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  const el = $('uploadList');
+  el.innerHTML = (data && data.length) ? '' : '<div class="muted">No photos yet.</div>';
+  for (const u of (data || [])) {
+    const row = document.createElement('div');
+    row.className = 'upload-row';
+    const { data: signed } = await sb.storage.from('uploads').createSignedUrl(u.storage_path, 3600);
+    row.innerHTML = (signed ? '<img class="photo-thumb" src="' + signed.signedUrl + '">' : '') +
+      '<div style="flex:1"><div class="muted">' + u.kind + ' - ' + new Date(u.created_at).toLocaleString() + '</div>' +
+      '<div class="muted">' + (u.review_note ? 'Review: ' + u.review_note : '') + '</div></div>' +
+      '<span class="badge ' + (u.status === 'reviewed' ? 'reviewed' : 'pending') + '">' + (u.status === 'reviewed' ? 'Reviewed' : 'Pending review') + '</span>';
+    el.appendChild(row);
+  }
+}
+
+/* ================= notifications ================= */
+function notifSupported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+
+async function registerSW() {
+  if (!('serviceWorker' in navigator)) return;
+  try { await navigator.serviceWorker.register('sw.js'); } catch (e) { console.warn('SW register failed', e); }
+}
+
+async function refreshNotifUI() {
+  const st = $('notifStatus'), btn = $('notifBtn');
+  if (!st || !btn) return;
+  if (!notifSupported()) {
+    st.textContent = 'Not supported in this browser. On iPhone: open the app from your Home Screen icon.';
+    btn.classList.add('hidden');
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    st.textContent = 'Notifications are blocked for this site. Allow them in your browser settings, then come back.';
+    btn.classList.add('hidden');
+    return;
+  }
+  let sub = null;
+  try { const reg = await navigator.serviceWorker.ready; sub = await reg.pushManager.getSubscription(); } catch (e) { /* ignore */ }
+  if (sub) {
+    st.textContent = 'On - this device gets due-time alerts.';
+    btn.textContent = 'Turn off';
+    btn.dataset.mode = 'off';
+    btn.classList.remove('hidden');
+  } else {
+    st.textContent = Notification.permission === 'granted' ? 'Almost there - tap the button to finish.' : 'Off for this device.';
+    btn.textContent = 'Enable notifications';
+    btn.dataset.mode = 'on';
+    btn.classList.remove('hidden');
+  }
+}
+
+$('notifBtn').onclick = async () => {
+  if ($('notifBtn').dataset.mode === 'off') await disableNotifications();
+  else await enableNotifications();
+};
+
+async function enableNotifications() {
+  const st = $('notifStatus');
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { st.textContent = 'Permission not granted.'; return; }
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY) });
+    const j = sub.toJSON();
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('push_subscriptions').upsert({
+      endpoint: j.endpoint,
+      keys: j.keys,
+      receipt_token: crypto.randomUUID(),
+      user_id: user.id,
+      user_agent: navigator.userAgent.slice(0, 200)
+    }, { onConflict: 'endpoint' });
+    if (error) { st.textContent = 'Could not save the subscription: ' + error.message; return; }
+    celebrate('Notifications on!');
+  } catch (e) {
+    st.textContent = 'Setup failed: ' + e.message;
+  }
+  refreshNotifUI();
+}
+
+async function disableNotifications() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      await sub.unsubscribe();
+    }
+  } catch (e) { /* ignore */ }
+  refreshNotifUI();
+}
+
+function urlB64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+init();
+
+</script>
+</body>
+</html>
