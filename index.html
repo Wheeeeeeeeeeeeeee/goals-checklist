@@ -207,26 +207,12 @@
     </div>
     <div class="muted" id="sidequestNote" style="display:none">
       Start a side quest before you head out, then tell Instinct in chat so your location can be checked. Location checks come from your phone's location history and can miss updates.
-      Photos you upload here are stored privately and marked for Instinct to review; analysis isn't automatic on the page.
     </div>
   </div>
 
   <div class="panel hidden" id="rewardsPanel">
     <div class="ptitle">LEVEL REWARDS</div>
     <div id="rewardsList"></div>
-  </div>
-
-  <div class="panel hidden" id="photosPanel">
-    <div class="addrow">
-      <input id="photoFile" type="file" accept="image/*">
-      <select id="photoKind">
-        <option value="quest">Quest proof</option>
-        <option value="homework">Homework</option>
-      </select>
-      <button id="uploadBtn">Upload</button>
-    </div>
-    <div class="muted">Uploads are private to this app's accounts. Each one is flagged for Instinct review - tell Instinct in chat when you upload so it gets looked at.</div>
-    <div id="uploadList" style="margin-top:10px"></div>
   </div>
 
   <div class="panel hidden" id="completedPanel">
@@ -270,7 +256,6 @@ const CATS = [
   { id: 'goal', label: 'Goals' },
   { id: 'sidequest', label: 'Side Quests' },
   { id: 'rewards', label: 'Rewards' },
-  { id: 'photos', label: 'Photos' },
   { id: 'completed', label: 'Completed' }
 ];
 let currentTab = 'homework';
@@ -432,7 +417,6 @@ function showApp() {
   $('app').classList.remove('hidden');
   renderTabs();
   loadQuests();
-  loadUploads();
   refreshNotifUI();
 }
 
@@ -449,17 +433,15 @@ function renderTabs() {
 }
 
 function renderMain() {
-  const isPhotos = currentTab === 'photos', isCompleted = currentTab === 'completed', isRewards = currentTab === 'rewards';
-  $('listPanel').classList.toggle('hidden', isPhotos || isCompleted || isRewards);
-  $('photosPanel').classList.toggle('hidden', !isPhotos);
+  const isCompleted = currentTab === 'completed', isRewards = currentTab === 'rewards';
+  $('listPanel').classList.toggle('hidden', isCompleted || isRewards);
   $('completedPanel').classList.toggle('hidden', !isCompleted);
   $('rewardsPanel').classList.toggle('hidden', !isRewards);
   $('sidequestNote').style.display = currentTab === 'sidequest' ? 'block' : 'none';
   $('newCat').value = CATS.some(c => c.id === currentTab && ['homework', 'reminder', 'goal', 'sidequest'].includes(currentTab)) ? currentTab : 'homework';
-  if (!isPhotos && !isCompleted && !isRewards) renderQuests();
+  if (!isCompleted && !isRewards) renderQuests();
   if (isCompleted) renderCompleted();
   if (isRewards) renderRewards();
-  if (isPhotos) loadUploads();
 }
 
 /* ================= quests ================= */
@@ -517,6 +499,12 @@ function renderQuests() {
       };
       row.appendChild(retry);
     }
+    const editBtn = document.createElement('button');
+    editBtn.className = 'small';
+    editBtn.title = 'Rename task';
+    editBtn.textContent = 'edit';
+    editBtn.onclick = () => toggleTitleEditor(row, q);
+    row.appendChild(editBtn);
     const dueBtn = document.createElement('button');
     dueBtn.className = 'small';
     dueBtn.title = 'Set due time';
@@ -564,6 +552,29 @@ function toggleDueEditor(row, q) {
     loadQuests();
   };
   ed.appendChild(inp); ed.appendChild(save); ed.appendChild(clear);
+  row.parentNode.insertBefore(ed, row.nextSibling);
+}
+
+function toggleTitleEditor(row, q) {
+  const next = row.nextSibling;
+  if (next && next.classList && next.classList.contains('title-editor')) { next.remove(); return; }
+  const ed = document.createElement('div');
+  ed.className = 'due-editor title-editor';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = q.title;
+  inp.maxLength = 200;
+  const save = document.createElement('button');
+  save.className = 'small'; save.textContent = 'Save';
+  save.onclick = async () => {
+    const v = inp.value.trim();
+    if (v && v !== q.title) await sb.from('quests').update({ title: v }).eq('id', q.id);
+    loadQuests();
+  };
+  const cancel = document.createElement('button');
+  cancel.className = 'small'; cancel.textContent = 'Cancel';
+  cancel.onclick = () => ed.remove();
+  ed.appendChild(inp); ed.appendChild(save); ed.appendChild(cancel);
   row.parentNode.insertBefore(ed, row.nextSibling);
 }
 
@@ -678,38 +689,6 @@ function renderCompleted() {
     row.querySelector('.name').textContent = q.title;
     el.appendChild(row);
   });
-}
-
-/* ================= photos ================= */
-$('uploadBtn').onclick = async () => {
-  const f = $('photoFile').files[0];
-  if (!f) return;
-  const { data: { user } } = await sb.auth.getUser();
-  const path = user.id + '/' + Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const { error: upErr } = await sb.storage.from('uploads').upload(path, f);
-  if (upErr) { alert('Upload failed: ' + upErr.message); return; }
-  await sb.from('uploads').insert({ storage_path: path, kind: $('photoKind').value, uploaded_by: user.id });
-  $('photoFile').value = '';
-  celebrate('Photo uploaded for review');
-  loadUploads();
-};
-
-async function loadUploads() {
-  if (currentTab !== 'photos') return;
-  const { data, error } = await sb.from('uploads').select('*').order('created_at', { ascending: false });
-  if (error) { console.error(error); return; }
-  const el = $('uploadList');
-  el.innerHTML = (data && data.length) ? '' : '<div class="muted">No photos yet.</div>';
-  for (const u of (data || [])) {
-    const row = document.createElement('div');
-    row.className = 'upload-row';
-    const { data: signed } = await sb.storage.from('uploads').createSignedUrl(u.storage_path, 3600);
-    row.innerHTML = (signed ? '<img class="photo-thumb" src="' + signed.signedUrl + '">' : '') +
-      '<div style="flex:1"><div class="muted">' + u.kind + ' - ' + new Date(u.created_at).toLocaleString() + '</div>' +
-      '<div class="muted">' + (u.review_note ? 'Review: ' + u.review_note : '') + '</div></div>' +
-      '<span class="badge ' + (u.status === 'reviewed' ? 'reviewed' : 'pending') + '">' + (u.status === 'reviewed' ? 'Reviewed' : 'Pending review') + '</span>';
-    el.appendChild(row);
-  }
 }
 
 /* ================= notifications ================= */
