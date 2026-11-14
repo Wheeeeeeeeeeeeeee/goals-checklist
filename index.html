@@ -160,7 +160,9 @@
 
   .hidden { display: none !important; }
   #signout { float: right; }
-  #notifPanel button { margin-top: 8px; }
+  .setgroup { border: 3px solid var(--border); padding: 12px; margin-top: 10px; }
+  .sgtitle { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--accent2); text-shadow: 1px 1px 0 var(--ink); margin-bottom: 8px; }
+  .setgroup button { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -219,11 +221,23 @@
     <div id="completedList"></div>
   </div>
 
-  <div class="panel" id="notifPanel">
-    <div class="ptitle">NOTIFICATIONS</div>
-    <div id="notifStatus" class="muted">Checking...</div>
-    <button id="notifBtn">Enable notifications</button>
-    <div class="muted tiny">Get an alert when a task hits its due time. On iPhone: open the app from your Home Screen icon first, then enable.</div>
+  <div class="panel hidden" id="settingsPanel">
+    <div class="ptitle">SETTINGS</div>
+    <div class="setgroup">
+      <div class="sgtitle">NOTIFICATIONS</div>
+      <div id="notifStatus" class="muted">Checking...</div>
+      <button id="notifBtn">Enable notifications</button>
+      <div class="muted tiny">Get an alert when a task hits its due time. On iPhone: open the app from your Home Screen icon first, then enable.</div>
+    </div>
+    <div class="setgroup">
+      <div class="sgtitle">GAME</div>
+      <div class="muted" id="gameStats"></div>
+    </div>
+    <div class="setgroup">
+      <div class="sgtitle">ACCOUNT</div>
+      <div class="muted" id="settingsEmail"></div>
+      <button id="signout2" class="small">Sign out</button>
+    </div>
   </div>
 </div>
 
@@ -249,14 +263,15 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
 });
 
-const XP_BY_CAT = { reminder: 10, homework: 25, goal: 25, sidequest: 50 };
+const XP_BY_CAT = { reminder: 10, homework: 25, goal: 125, sidequest: 50 };
 const CATS = [
   { id: 'homework', label: 'Homework' },
   { id: 'reminder', label: 'Reminders' },
   { id: 'goal', label: 'Goals' },
   { id: 'sidequest', label: 'Side Quests' },
   { id: 'rewards', label: 'Rewards' },
-  { id: 'completed', label: 'Completed' }
+  { id: 'completed', label: 'Completed' },
+  { id: 'settings', label: 'Settings' }
 ];
 let currentTab = 'homework';
 let quests = [];
@@ -433,16 +448,31 @@ function renderTabs() {
 }
 
 function renderMain() {
-  const isCompleted = currentTab === 'completed', isRewards = currentTab === 'rewards';
-  $('listPanel').classList.toggle('hidden', isCompleted || isRewards);
+  const isCompleted = currentTab === 'completed', isRewards = currentTab === 'rewards', isSettings = currentTab === 'settings';
+  $('listPanel').classList.toggle('hidden', isCompleted || isRewards || isSettings);
   $('completedPanel').classList.toggle('hidden', !isCompleted);
   $('rewardsPanel').classList.toggle('hidden', !isRewards);
+  $('settingsPanel').classList.toggle('hidden', !isSettings);
   $('sidequestNote').style.display = currentTab === 'sidequest' ? 'block' : 'none';
   $('newCat').value = CATS.some(c => c.id === currentTab && ['homework', 'reminder', 'goal', 'sidequest'].includes(currentTab)) ? currentTab : 'homework';
-  if (!isCompleted && !isRewards) renderQuests();
+  if (!isCompleted && !isRewards && !isSettings) renderQuests();
   if (isCompleted) renderCompleted();
   if (isRewards) renderRewards();
+  if (isSettings) renderSettings();
 }
+
+function renderSettings() {
+  const xp = currentXP();
+  const level = levelFor(xp);
+  const doneCount = quests.filter(q => q.status === 'done').length;
+  const st = streakDays(quests.filter(q => q.status === 'done'));
+  $('gameStats').textContent = 'LV ' + level + ' - ' + (xp % 100) + '/100 XP (' + xp + ' total) - ' + doneCount + ' quests done' + (st > 0 ? ' - ' + st + ' day streak' : '');
+  sb.auth.getUser().then(({ data: { user } }) => {
+    $('settingsEmail').textContent = user ? 'Signed in as ' + user.email : '';
+  });
+}
+
+$('signout2').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 
 /* ================= quests ================= */
 async function loadQuests() {
