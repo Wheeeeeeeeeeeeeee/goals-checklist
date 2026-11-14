@@ -1,4 +1,4 @@
-/* Goals & Side Quests service worker - web push handling */
+/* Goals service worker - web push handling */
 const FUNCTION_URL = 'https://ifvzdzyyrrlchsecqdop.supabase.co/functions/v1/send-due-reminders';
 const ANON_KEY = 'sb_publishable_i4X_ezNlqGg1IkXESbw5JQ_vDyP4A7f';
 
@@ -8,7 +8,7 @@ self.addEventListener('activate', event => event.waitUntil(clients.claim()));
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) { /* keep defaults */ }
-  const title = data.title || 'Goals & Side Quests';
+  const title = data.title || 'Goals';
   const body = data.body || 'You have a quest due!';
   const jobs = [
     self.registration.showNotification(title, {
