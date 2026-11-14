@@ -501,6 +501,22 @@ function renderQuests() {
       b.textContent = (overdue ? 'OVERDUE ' : '') + fmtDue(d);
       row.appendChild(b);
     }
+    if (q.reminder_failed_at) {
+      const fb = document.createElement('span');
+      fb.className = 'badge overdue';
+      fb.title = 'The reminder could not be delivered after ' + (q.reminder_attempts || 0) + ' tries. Check that notifications are enabled, then tap Retry.';
+      fb.textContent = 'REMINDER FAILED';
+      row.appendChild(fb);
+      const retry = document.createElement('button');
+      retry.className = 'small';
+      retry.textContent = 'Retry';
+      retry.title = 'Try sending the reminder again';
+      retry.onclick = async () => {
+        await sb.from('quests').update({ reminder_failed_at: null, reminder_attempts: 0 }).eq('id', q.id);
+        loadQuests();
+      };
+      row.appendChild(retry);
+    }
     const dueBtn = document.createElement('button');
     dueBtn.className = 'small';
     dueBtn.title = 'Set due time';
@@ -538,13 +554,13 @@ function toggleDueEditor(row, q) {
   save.className = 'small'; save.textContent = 'Save';
   save.onclick = async () => {
     const v = inp.value;
-    await sb.from('quests').update({ due_at: v ? new Date(v).toISOString() : null, reminder_sent_at: null }).eq('id', q.id);
+    await sb.from('quests').update({ due_at: v ? new Date(v).toISOString() : null, reminder_sent_at: null, reminder_failed_at: null, reminder_attempts: 0 }).eq('id', q.id);
     loadQuests();
   };
   const clear = document.createElement('button');
   clear.className = 'small'; clear.textContent = 'Clear';
   clear.onclick = async () => {
-    await sb.from('quests').update({ due_at: null, reminder_sent_at: null }).eq('id', q.id);
+    await sb.from('quests').update({ due_at: null, reminder_sent_at: null, reminder_failed_at: null, reminder_attempts: 0 }).eq('id', q.id);
     loadQuests();
   };
   ed.appendChild(inp); ed.appendChild(save); ed.appendChild(clear);
