@@ -1,7 +1,7 @@
 {
-  "name": "Goals & Side Quests",
+  "name": "Goals",
   "short_name": "Goals",
-  "description": "Homework, reminders, goals and side quests - a gamified quest tracker.",
+  "description": "Homework, reminders and goals - a gamified quest tracker.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
