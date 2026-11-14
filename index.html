@@ -109,6 +109,10 @@
   .duelabel { color: var(--dim); font-size: 17px; white-space: nowrap; }
   .due-editor { display: flex; gap: 8px; padding: 8px 0 8px 12px; align-items: center; border-bottom: 3px solid var(--border); background: var(--panel2); }
   .due-editor input { flex: 1; }
+  .daychecks { display: flex; gap: 6px; flex-wrap: wrap; }
+  .daychecks button { padding: 5px 8px; font-size: 16px; }
+  .daychecks button.on { background: var(--accent); color: var(--ink); border-color: var(--ink); }
+  .sched-editor input[type="time"] { width: auto; }
 
   .muted { color: var(--dim); font-size: 17px; margin-top: 6px; line-height: 1.4; }
   .tiny { font-size: 16px; }
@@ -199,16 +203,12 @@
         <option value="homework">Homework</option>
         <option value="reminder">Reminder</option>
         <option value="goal">Goal</option>
-        <option value="sidequest">Side Quest</option>
       </select>
       <button id="addBtn">Add</button>
     </div>
     <div class="addrow">
       <span class="duelabel">Due (optional):</span>
       <input id="newDue" type="datetime-local">
-    </div>
-    <div class="muted" id="sidequestNote" style="display:none">
-      Start a side quest before you head out, then tell Instinct in chat so your location can be checked. Location checks come from your phone's location history and can miss updates.
     </div>
   </div>
 
@@ -232,6 +232,10 @@
     <div class="setgroup">
       <div class="sgtitle">GAME</div>
       <div class="muted" id="gameStats"></div>
+    </div>
+    <div class="setgroup">
+      <div class="sgtitle">SIDE QUESTS</div>
+      <div class="muted">Side quests moved to their own site: <a href="https://wheeeeeeeeeeeeeee.github.io/side-quests/" style="color:var(--accent)">Side Quests</a>. Same sign-in. Finishing them still earns XP here.</div>
     </div>
     <div class="setgroup">
       <div class="sgtitle">ACCOUNT</div>
@@ -268,7 +272,6 @@ const CATS = [
   { id: 'homework', label: 'Homework' },
   { id: 'reminder', label: 'Reminders' },
   { id: 'goal', label: 'Goals' },
-  { id: 'sidequest', label: 'Side Quests' },
   { id: 'rewards', label: 'Rewards' },
   { id: 'completed', label: 'Completed' },
   { id: 'settings', label: 'Settings' }
@@ -453,8 +456,7 @@ function renderMain() {
   $('completedPanel').classList.toggle('hidden', !isCompleted);
   $('rewardsPanel').classList.toggle('hidden', !isRewards);
   $('settingsPanel').classList.toggle('hidden', !isSettings);
-  $('sidequestNote').style.display = currentTab === 'sidequest' ? 'block' : 'none';
-  $('newCat').value = CATS.some(c => c.id === currentTab && ['homework', 'reminder', 'goal', 'sidequest'].includes(currentTab)) ? currentTab : 'homework';
+  $('newCat').value = CATS.some(c => c.id === currentTab && ['homework', 'reminder', 'goal'].includes(currentTab)) ? currentTab : 'homework';
   if (!isCompleted && !isRewards && !isSettings) renderQuests();
   if (isCompleted) renderCompleted();
   if (isRewards) renderRewards();
@@ -513,6 +515,13 @@ function renderQuests() {
       b.textContent = (overdue ? 'OVERDUE ' : '') + fmtDue(d);
       row.appendChild(b);
     }
+    if (q.reminder_days && q.reminder_days.length && q.reminder_time) {
+      const sb2 = document.createElement('span');
+      sb2.className = 'badge due';
+      sb2.title = 'Repeating reminder';
+      sb2.textContent = '\u23F0 ' + fmtSched(q.reminder_days, q.reminder_time);
+      row.appendChild(sb2);
+    }
     if (q.reminder_failed_at) {
       const fb = document.createElement('span');
       fb.className = 'badge overdue';
@@ -541,6 +550,12 @@ function renderQuests() {
     dueBtn.textContent = q.due_at ? 'edit time' : '+ time';
     dueBtn.onclick = () => toggleDueEditor(row, q);
     row.appendChild(dueBtn);
+    const schedBtn = document.createElement('button');
+    schedBtn.className = 'small';
+    schedBtn.title = 'Set a repeating day/time reminder';
+    schedBtn.textContent = (q.reminder_days && q.reminder_days.length && q.reminder_time) ? 'edit sched' : '+ sched';
+    schedBtn.onclick = () => toggleSchedEditor(row, q);
+    row.appendChild(schedBtn);
 
     if (q.category === 'sidequest' && !q.started_at) {
       const s = document.createElement('button');
@@ -558,6 +573,68 @@ function renderQuests() {
     row.appendChild(del);
     el.appendChild(row);
   });
+}
+
+const DAY_ABBR = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+function fmtTime12(t) {
+  const parts = String(t).split(':');
+  let h = parseInt(parts[0], 10); const m = parts[1] || '00';
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = ((h + 11) % 12) + 1;
+  return h + ':' + m + ' ' + ap;
+}
+function fmtSched(days, time) {
+  const ds = days.slice().sort((a, b) => a - b).map(d => DAY_ABBR[d]).join('/');
+  return ds + ' ' + fmtTime12(time);
+}
+
+function toggleSchedEditor(row, q) {
+  const next = row.nextSibling;
+  if (next && next.classList && next.classList.contains('sched-editor')) { next.remove(); return; }
+  const ed = document.createElement('div');
+  ed.className = 'due-editor sched-editor';
+  const daysWrap = document.createElement('div');
+  daysWrap.className = 'daychecks';
+  const selected = new Set(q.reminder_days || []);
+  DAY_ABBR.forEach((label, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.className = selected.has(i) ? 'on' : '';
+    b.onclick = () => {
+      if (selected.has(i)) { selected.delete(i); b.className = ''; }
+      else { selected.add(i); b.className = 'on'; }
+    };
+    daysWrap.appendChild(b);
+  });
+  const timeInp = document.createElement('input');
+  timeInp.type = 'time';
+  timeInp.value = q.reminder_time ? String(q.reminder_time).slice(0, 5) : '16:00';
+  const save = document.createElement('button');
+  save.className = 'small'; save.textContent = 'Save';
+  save.onclick = async () => {
+    const days = Array.from(selected).sort((a, b) => a - b);
+    if (!days.length || !timeInp.value) { alert('Pick at least one day and a time.'); return; }
+    await sb.from('quests').update({
+      reminder_days: days, reminder_time: timeInp.value,
+      sched_last_sent_on: null, sched_try_on: null, sched_attempts: 0
+    }).eq('id', q.id);
+    loadQuests();
+  };
+  const clear = document.createElement('button');
+  clear.className = 'small'; clear.textContent = 'Clear';
+  clear.onclick = async () => {
+    await sb.from('quests').update({
+      reminder_days: null, reminder_time: null,
+      sched_last_sent_on: null, sched_try_on: null, sched_attempts: 0
+    }).eq('id', q.id);
+    loadQuests();
+  };
+  const cancel = document.createElement('button');
+  cancel.className = 'small'; cancel.textContent = 'Cancel';
+  cancel.onclick = () => ed.remove();
+  ed.appendChild(daysWrap); ed.appendChild(timeInp); ed.appendChild(save); ed.appendChild(clear); ed.appendChild(cancel);
+  row.parentNode.insertBefore(ed, row.nextSibling);
 }
 
 function toggleDueEditor(row, q) {
