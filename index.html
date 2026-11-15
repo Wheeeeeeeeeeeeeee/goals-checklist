@@ -109,6 +109,8 @@
   .duelabel { color: var(--dim); font-size: 17px; white-space: nowrap; }
   .due-editor { display: flex; gap: 8px; padding: 8px 0 8px 12px; align-items: center; border-bottom: 3px solid var(--border); background: var(--panel2); }
   .due-editor input { flex: 1; }
+  .genrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; font-size: 15px; }
+  .genrow select { width: auto; }
   .daychecks { display: flex; gap: 6px; flex-wrap: wrap; }
   .daychecks button { padding: 5px 8px; font-size: 16px; }
   .daychecks button.on { background: var(--accent); color: var(--ink); border-color: var(--ink); }
@@ -228,6 +230,21 @@
       <div id="notifStatus" class="muted">Checking...</div>
       <button id="notifBtn">Enable notifications</button>
       <div class="muted tiny">Get an alert when a task hits its due time. On iPhone: open the app from your Home Screen icon first, then enable.</div>
+    </div>
+    <div class="setgroup">
+      <div class="sgtitle">GENERAL REMINDER</div>
+      <div class="muted tiny">A repeating "do your tasks" nudge, separate from task reminders. Off until you turn it on and save.</div>
+      <div class="genrow">
+        <label><input type="checkbox" id="genEnabled"> On</label>
+        <span class="muted">every</span>
+        <select id="genEvery"></select>
+        <span class="muted">hours, between</span>
+        <select id="genStart"></select>
+        <span class="muted">and</span>
+        <select id="genEnd"></select>
+      </div>
+      <button id="genSave" class="small">Save general reminder</button>
+      <div class="muted tiny" id="genStatus"></div>
     </div>
     <div class="setgroup">
       <div class="sgtitle">GAME</div>
@@ -472,7 +489,52 @@ function renderSettings() {
   sb.auth.getUser().then(({ data: { user } }) => {
     $('settingsEmail').textContent = user ? 'Signed in as ' + user.email : '';
   });
+  loadGeneralReminder();
 }
+
+/* ---- general "do your tasks" reminder settings ---- */
+function fmtHour(h) { const ap = h >= 12 ? 'PM' : 'AM'; return (((h + 11) % 12) + 1) + ' ' + ap; }
+
+async function loadGeneralReminder() {
+  const selEvery = $('genEvery'), selStart = $('genStart'), selEnd = $('genEnd');
+  if (!selEvery.options.length) {
+    [1, 2, 3, 4, 6, 8, 12, 24].forEach(h => selEvery.add(new Option(h, h)));
+    for (let h = 5; h <= 23; h++) { selStart.add(new Option(fmtHour(h), h)); selEnd.add(new Option(fmtHour(h), h)); }
+    selEvery.value = '3'; selStart.value = '8'; selEnd.value = '21';
+  }
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const { data, error } = await sb.from('general_reminders').select('*').eq('user_id', user.id).maybeSingle();
+  if (error) { $('genStatus').textContent = 'Could not load: ' + error.message; return; }
+  if (data) {
+    $('genEnabled').checked = !!data.enabled;
+    selEvery.value = String(data.every_hours);
+    selStart.value = String(data.start_hour);
+    selEnd.value = String(data.end_hour);
+    $('genStatus').textContent = data.enabled
+      ? 'On - every ' + data.every_hours + 'h, ' + fmtHour(data.start_hour) + ' to ' + fmtHour(data.end_hour) + '. Last sent: ' + (data.last_sent_at ? new Date(data.last_sent_at).toLocaleString() : 'not yet') + '.'
+      : 'Off.';
+  }
+}
+
+$('genSave').onclick = async () => {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const start = parseInt($('genStart').value, 10), end = parseInt($('genEnd').value, 10);
+  if (start >= end) { $('genStatus').textContent = 'Start hour must be before end hour.'; return; }
+  const enabled = $('genEnabled').checked;
+  const { error } = await sb.from('general_reminders').upsert({
+    user_id: user.id,
+    enabled: enabled,
+    every_hours: parseInt($('genEvery').value, 10),
+    start_hour: start,
+    end_hour: end,
+    last_sent_at: null
+  }, { onConflict: 'user_id' });
+  $('genStatus').textContent = error
+    ? 'Save failed: ' + error.message
+    : (enabled ? 'Saved. It nudges during your chosen hours (alerts need notifications enabled above).' : 'Saved - general reminder is off.');
+};
 
 $('signout2').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 
