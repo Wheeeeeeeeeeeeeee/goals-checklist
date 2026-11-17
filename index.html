@@ -840,7 +840,11 @@ function renderRewards() {
   const el = $('rewardsList');
   const xp = currentXP();
   const level = levelFor(xp);
-  el.innerHTML = '<div class="muted" style="margin-bottom:10px">You are LV ' + level + '. Gear unlocks as you level up and shows up on your character.</div>';
+  let headHtml = '<div class="muted" style="margin-bottom:10px">You are LV ' + level + '. Gear unlocks as you level up and shows up on your character.</div>';
+  const nextR = REWARDS.find(r => level < r.level) || { level: level + 1, name: 'Prestige Gem', desc: 'One gem for every level past 10.' };
+  const togo = Math.max(0, (nextR.level - 1) * 100 - xp);
+  headHtml += '<div class="reward"><div class="rhead"><span class="rlv">NEXT</span> <span class="rname">' + nextR.name + '</span> <span class="rstatus">' + togo + ' XP to go</span></div><div class="rdesc muted">' + nextR.desc + '</div></div>';
+  el.innerHTML = headHtml;
   REWARDS.forEach(r => {
     const un = level >= r.level;
     const card = document.createElement('div');
@@ -957,6 +961,6 @@ function urlB64ToUint8Array(base64String) {
 // Initialized by todo.js after workspace setup.
 
 </script>
-<script src="todo.js?v=20261116-completion-times"></script>
+<script src="todo.js?v=20261117-ui"></script>
 </body>
 </html>
